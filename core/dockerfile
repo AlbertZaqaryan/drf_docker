@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+# Устанавливаем необходимые системные зависимости
+RUN apt-get update && apt-get install -y \
+    gcc \
+    default-libmysqlclient-dev \
+    libmariadb-dev \
+    pkg-config \
+    && apt-get clean
+
+# Установка рабочей директории
+WORKDIR /app
+
+# Устанавливаем зависимости Python
+COPY requirements.txt .
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем код проекта
+COPY . .
+
+# Открываем порт
+EXPOSE 8000
+
+# Запуск сервера
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
