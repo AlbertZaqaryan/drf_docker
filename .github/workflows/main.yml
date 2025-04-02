@@ -28,10 +28,35 @@ jobs:
         aws-secret-access-key:  ${{ secrets.AWS_SECRET_KEY }}
         aws-region           :  ${{ env.AWS_REGION_NAME }}
 
-
-      
     - name: Copy Deployment package to S3 bucket
       run: aws s3 cp ${{ env.DEPLOY_PACKAGE_NAME }} s3://${{ env.S3_BUCKET_NAME }}/
-    
+
     - name: Finish CI part
       run: echo "CI Pipeline part Finished successfully!"
+
+  my_cd_part:
+    needs: my_ci_part
+    runs-on: ubuntu-latest
+
+    env:
+      S3_BUCKET_NAME: "djangoapp.bucket"
+      DEPLOY_PACKAGE_NAME: "django_rest_${{ github.sha }}.zip"
+
+    steps:
+    - name: Connect to EC2 and run deploy script
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}  # ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          echo "Downloading latest build from S3..."
+          aws s3 cp s3://${{ env.S3_BUCKET_NAME }}/${{ env.DEPLOY_PACKAGE_NAME }} /home/ec2-user/
+
+          echo "Unzipping deployment package..."
+          rm -rf /home/ec2-user/app/
+          mkdir -p /home/ec2-user/app/
+          unzip -o /home/ec2-user/${{ env.DEPLOY_PACKAGE_NAME }} -d /home/ec2-user/app/
+
+          echo "Running deploy script..."
+          bash /home/ec2-user/app/deploy.sh
