@@ -2,7 +2,6 @@ name: CI-CD-Pipeline-to-AWS-S3Bucket
 
 env:
   S3_BUCKET_NAME: "djangoapp.bucket"
-  DEPLOY_PACKAGE_NAME: "django_rest_${{ github.sha }}.zip"
   AWS_REGION_NAME: "us-east-1"
 
 on:
@@ -13,50 +12,51 @@ on:
 jobs:
   my_ci_part:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Git clone our repo
-      uses: actions/checkout@v1
-      
-    - name: Create ZIP deployment package
-      run: zip -r ${{ env.DEPLOY_PACKAGE_NAME }} ./ -x *.git*
+      - name: Git clone our repo
+        uses: actions/checkout@v3
 
-    - name: Configure my AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id    :  ${{ secrets.AWS_ACCESS_KEY }}
-        aws-secret-access-key:  ${{ secrets.AWS_SECRET_KEY }}
-        aws-region           :  ${{ env.AWS_REGION_NAME }}
+      - name: Create ZIP deployment package
+        run: |
+          ZIP_NAME=django_rest_${{ github.sha }}.zip
+          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
+          zip -r $ZIP_NAME ./ -x '*.git*'
 
-    - name: Copy Deployment package to S3 bucket
-      run: aws s3 cp ${{ env.DEPLOY_PACKAGE_NAME }} s3://${{ env.S3_BUCKET_NAME }}/
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION_NAME }}
 
-    - name: Finish CI part
-      run: echo "CI Pipeline part Finished successfully!"
+      - name: Upload to S3
+        run: aws s3 cp ${{ env.ZIP_NAME }} s3://${{ env.S3_BUCKET_NAME }}/
+
+      - name: CI Done
+        run: echo "✅ CI part finished"
 
   my_cd_part:
     needs: my_ci_part
     runs-on: ubuntu-latest
 
-    env:
-      S3_BUCKET_NAME: "djangoapp.bucket"
-      DEPLOY_PACKAGE_NAME: "django_rest_${{ github.sha }}.zip"
-
     steps:
-    - name: Connect to EC2 and run deploy script
-      uses: appleboy/ssh-action@v0.1.10
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}  # ec2-user
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          echo "Downloading latest build from S3..."
-          aws s3 cp s3://${{ env.S3_BUCKET_NAME }}/${{ env.DEPLOY_PACKAGE_NAME }} /home/ec2-user/
+      - name: SSH into EC2 and run deployment
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            ZIP_NAME=django_rest_${{ github.sha }}.zip
 
-          echo "Unzipping deployment package..."
-          rm -rf /home/ec2-user/app/
-          mkdir -p /home/ec2-user/app/
-          unzip -o /home/ec2-user/${{ env.DEPLOY_PACKAGE_NAME }} -d /home/ec2-user/app/
+            echo "📦 Downloading from S3..."
+            aws s3 cp s3://${{ env.S3_BUCKET_NAME }}/$ZIP_NAME /home/${{ secrets.EC2_USER }}/
 
-          echo "Running deploy script..."
-          bash /home/ec2-user/app/deploy.sh
+            echo "📂 Unzipping..."
+            rm -rf /home/${{ secrets.EC2_USER }}/app/
+            mkdir -p /home/${{ secrets.EC2_USER }}/app/
+            unzip -o /home/${{ secrets.EC2_USER }}/$ZIP_NAME -d /home/${{ secrets.EC2_USER }}/app/
+
+            echo "🚀 Running deploy script..."
+            chmod +x /home/${{ secrets.EC2_USER }}/app/deploy.sh
+            bash /home/${{ secrets.EC2_USER }}/app/deploy.sh
