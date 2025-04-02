@@ -1,17 +1,17 @@
 #!/bin/bash
-cd /home/ubuntu/app
+cd /home/ec2-user/app || exit 1
 
-# Optional: activate venv
-source venv/bin/activate
+# Активировать виртуальное окружение, если оно есть
+source venv/bin/activate 2>/dev/null || echo "No venv found"
 
-# Install/update dependencies
+# Установка зависимостей
 pip install -r requirements.txt
 
-# Run migrations
+# Миграции
 python manage.py migrate
 
-# Collect static files
+# Собрать статику
 python manage.py collectstatic --noinput
 
-# Restart gunicorn or other services
+# Перезапуск gunicorn
 sudo systemctl restart gunicorn
